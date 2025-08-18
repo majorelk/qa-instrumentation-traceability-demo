@@ -1,11 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const useDev = !!process.env.USE_DEV_SERVER;
+
 export default defineConfig({
-  testDir: './tests',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  testDir: 'tests',
   reporter: [['html', { outputFolder: 'playwright-report' }]],
   use: {
     baseURL: 'http://localhost:5173',
@@ -13,24 +11,17 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-
   projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
-
-  webServer: [
-    {
-      command: 'cd ../../apps/web && npm run preview',
-      port: 5173,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'cd ../../apps/api && npm run dev',
-      port: 3000,
-      reuseExistingServer: !process.env.CI,
-    },
-  ],
+  webServer: {
+    // Start the web app from the correct directory.
+    command: useDev
+      ? 'bash -lc "cd ../../apps/web && pnpm dev -- --port 5173 --strictPort"'
+      : 'bash -lc "cd ../../apps/web && pnpm preview --port 5173 --strictPort"',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+    timeout: 90_000,
+  },
 });
+

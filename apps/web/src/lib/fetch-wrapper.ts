@@ -1,4 +1,4 @@
-import { emitEvent, type TelemetryEvent } from 'telemetry';
+import type { TelemetryEvent } from 'telemetry';
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
