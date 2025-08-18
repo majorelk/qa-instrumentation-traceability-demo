@@ -4,5 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": { "start": "node server.mjs" },
-  "dependencies": { "express": "^4.19.2", "pino": "^9.0.0", "zod": "^3.23.8" }
+  "dependencies": { 
+    "express": "^4.21.2", 
+    "pino": "^9.5.0", 
+    "zod": "^3.24.1" 
+  }
 }
