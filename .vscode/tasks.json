@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI: Save prompt from clipboard",
+      "type": "shell",
+      "command": "AI_TOOL='Claude Code' TITLE='prompt' ./scripts/ai_log.sh",
+      "problemMatcher": []
+    }
+  ]
+}

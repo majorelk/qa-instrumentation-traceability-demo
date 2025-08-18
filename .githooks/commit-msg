@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Warn if commit mentions AI-assisted but doesn't include a prompt log.
+set -Eeuo pipefail
+MSG_FILE="$1"
+if grep -qi 'AI-assisted' "$MSG_FILE"; then
+  if ! git diff --cached --name-only | grep -q '^docs/ai/runs/'; then
+    echo "⚠️  Mentioned AI-assisted but no docs/ai/runs/ log in this commit." >&2
+    echo "   Tip: AI_TOOL='Claude Code' TITLE='bootstrap' ./scripts/ai_log.sh" >&2
+  fi
+fi
