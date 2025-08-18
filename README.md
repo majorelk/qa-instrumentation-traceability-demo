@@ -1,4 +1,5 @@
- QA Instrumentation & Traceability Demo
+# QA Instrumentation & Traceability Demo
+[![CI](https://github.com/majorelk/qa-instrumentation-traceability-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/majorelk/qa-instrumentation-traceability-demo/actions/workflows/ci.yml)
 
 A minimal monorepo showing how to **instrument the application layer** for **bug reportability** and **traceability**, validated with **Playwright** end-to-end tests.
 

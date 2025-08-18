@@ -53,11 +53,7 @@ app.post('/rest/api/3/issue', async (req, res) => {
   const key = `QA-${100 + requests.length}`;
   const id = String(10_000 + requests.length);
   log.info({ request_id, key }, 'jira_mock: created issue');
-  return res.status(201).json({
-    id,
-    key,
-    self: `http://jira-mock:${PORT}/browse/${key}`
-  });
+  return res.status(201).json({ id, key, self: `http://jira-mock:${PORT}/browse/${key}` });
 });
 
 // Test admin helpers
