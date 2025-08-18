@@ -1,5 +1,4 @@
-name: CI
-
+name: E2E (Playwright)
 on:
   push:
     branches: [main]
@@ -8,40 +7,45 @@ on:
 
 jobs:
   e2e:
-    if: ${{ hashFiles('tests/e2e/**') != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: |
-            pnpm-lock.yaml
-            tests/e2e/pnpm-lock.yaml
 
-      - name: Install deps
-        run: |
-          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile || true; fi
-          if [ -f tests/e2e/pnpm-lock.yaml ]; then pnpm -C tests/e2e install --frozen-lockfile; fi
+      - name: Install deps (workspace)
+        run: pnpm install
 
-      - name: Install Playwright (browsers + deps)
+      - name: Build web (prod)
+        run: pnpm -C apps/web build
+
+      - name: Install Playwright browsers
         run: pnpm -C tests/e2e exec playwright install --with-deps
 
-      - name: Run Playwright tests
+      - name: Start API (background)
+        run: pnpm -C apps/api dev & echo $! > api.pid
+
+      - name: Wait for API
+        run: npx --yes wait-on http://localhost:3000/healthz
+
+      - name: Run Playwright (preview mode)
         run: pnpm -C tests/e2e test
 
-      - name: Upload Playwright HTML report
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: tests/e2e/playwright-report
-          if-no-files-found: ignore
+
+      - name: Stop API
+        if: always()
+        run: kill $(cat api.pid) || true
+
