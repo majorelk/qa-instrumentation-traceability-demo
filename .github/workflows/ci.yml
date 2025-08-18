@@ -53,13 +53,8 @@ jobs:
       - name: Build all packages
         run: pnpm -r build
 
-      - name: Install E2E dependencies
-        run: pnpm install
-        working-directory: ./tests/e2e
-
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-        working-directory: ./tests/e2e
+        run: pnpm -C tests/e2e exec playwright install --with-deps
 
       - name: Start API server
         run: pnpm -C apps/api dev &
