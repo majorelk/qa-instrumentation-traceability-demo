@@ -54,7 +54,7 @@ jobs:
         run: pnpm -r build
 
       - name: Install Playwright browsers
-        run: pnpm -C tests/e2e exec playwright install --with-deps
+        run: pnpm -C tests/e2e install-browsers
 
       - name: Start API server
         run: pnpm -C apps/api dev &
