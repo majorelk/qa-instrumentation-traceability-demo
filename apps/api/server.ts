@@ -36,9 +36,30 @@ function correlateRequests(req: Request, res: Response, next: NextFunction): voi
 
 app.use(correlateRequests);
 
+// In-memory storage for last telemetry event (dev/test only)
+let lastTelemetryEvent: TelemetryEvent | null = null;
+
 // Health check endpoint
 app.get('/healthz', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
+});
+
+// API fail endpoint
+app.get('/api/fail', (req: Request, res: Response) => {
+  res.status(500).json({ error: 'Intentional server error for testing' });
+});
+
+// Debug endpoint to get last telemetry event (dev/test only)
+app.get('/debug/last-event', (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  
+  if (!lastTelemetryEvent) {
+    return res.status(404).json({ error: 'No telemetry events received yet' });
+  }
+  
+  res.json(lastTelemetryEvent);
 });
 
 // Telemetry endpoint
@@ -57,6 +78,11 @@ app.post('/telemetry', (req: Request, res: Response) => {
     ...event,
     request_id: event.request_id || res.locals.requestId
   } as TelemetryEvent;
+  
+  // Store last event for debug endpoint (dev/test only)
+  if (process.env.NODE_ENV !== 'production') {
+    lastTelemetryEvent = telemetryEvent;
+  }
   
   // Log the event with request_id
   const logEntry = {
