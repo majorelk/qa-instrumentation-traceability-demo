@@ -80,7 +80,7 @@ async function apiCall(url: string, requestId: string) {
         route: new URL(url).pathname,
         status: response.status,
         request_id: requestId,
-        error_code: 'API_ERROR',
+        error_code: 'HTTP_ERROR',
         error: `${response.status} ${response.statusText}`
       });
     }

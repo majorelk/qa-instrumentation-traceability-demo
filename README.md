@@ -97,6 +97,15 @@ Every request gets a unique `x-request-id` that flows through:
 3. **Telemetry events** include the request ID for correlation
 4. **E2E tests** verify end-to-end traceability
 
+### Automatic Telemetry Beacons
+
+The web app automatically sends telemetry for failed requests:
+- **Non-OK HTTP responses** (4xx/5xx) trigger telemetry events
+- **Network errors** are captured and reported
+- Uses **navigator.sendBeacon** for reliability (fallback to fetch)
+- **Non-blocking** - never affects user experience
+- **Error categorization** - HTTP_ERROR vs NETWORK_ERROR
+
 ### Telemetry Schema
 
 The telemetry package provides **Zod schema validation** and **data scrubbing** for safe logging:

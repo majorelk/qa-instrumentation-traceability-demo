@@ -87,7 +87,7 @@ Returns the last telemetry event received by the server. Only available in non-p
   "route": "/api/fail",
   "status": 500,
   "request_id": "123e4567-e89b-12d3-a456-426614174000",
-  "error_code": "API_ERROR",
+  "error_code": "HTTP_ERROR",
   "error": "500 Internal Server Error"
 }
 ```

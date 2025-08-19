@@ -28,7 +28,7 @@ Treat failing E2E as a product signal: fix or document flakiness with a ticket.
   "request_id": "uuid-optional",
   "route": "/client/route-or-api/endpoint",
   "status": 500,
-  "error_code": "API_ERROR",
+  "error_code": "HTTP_ERROR",
   "error": "message or scrubbed stack"
 }
 ```
