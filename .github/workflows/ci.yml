@@ -111,7 +111,7 @@ jobs:
 
       - name: Start API server
         run: pnpm -C apps/api dev &
-        
+
       - name: Wait for API to be ready
         run: npx --yes wait-on http://localhost:3000/healthz --timeout 30000
 
@@ -143,3 +143,9 @@ jobs:
           echo "- **Traces**: Detailed timeline with network/DOM events" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "💡 Download the artifacts to explore Playwright's debugging capabilities." >> $GITHUB_STEP_SUMMARY
+
+      - name: Summarize (artifact links)
+        if: always()
+        run: |
+          echo "## Failure demo artifacts" >> "$GITHUB_STEP_SUMMARY"
+          echo "- HTML report: download the \`playwright-report-failure-demo\` artifact from this run." >> "$GITHUB_STEP_SUMMARY"
