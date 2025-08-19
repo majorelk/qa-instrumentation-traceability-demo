@@ -36,7 +36,7 @@ test('end-to-end request traceability with telemetry correlation', async ({ page
     release: 'local',
     route: '/api/fail',
     status: 500,
-    error_code: 'API_ERROR',
+    error_code: 'HTTP_ERROR',
     request_id: requestId,
   });
   
