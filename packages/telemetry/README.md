@@ -7,7 +7,8 @@ Framework-agnostic TypeScript utilities for structured event emission and teleme
 - **Framework-agnostic**: Works with any JavaScript/TypeScript runtime
 - **ESM-first**: Modern ES modules with proper exports mapping
 - **Type-safe**: Full TypeScript support with strict typing
-- **Zero dependencies**: Lightweight with no external runtime dependencies
+- **Schema validation**: Zod-based schema for runtime validation
+- **Data scrubbing**: Built-in sensitive data redaction utilities
 - **Structured schema**: Consistent event format across applications
 - **Request correlation**: Built-in support for request ID tracking
 
@@ -26,7 +27,7 @@ pnpm add telemetry
 ### Basic Setup
 
 ```typescript
-import { initTelemetry, emitEvent, type TelemetryEvent } from 'telemetry';
+import { initTelemetry, emitEvent, scrub, TelemetryEventSchema, type TelemetryEvent } from 'telemetry';
 
 // Initialize once at application startup
 initTelemetry({
@@ -79,7 +80,7 @@ async function apiCall(url: string, requestId: string) {
         route: new URL(url).pathname,
         status: response.status,
         request_id: requestId,
-        error_code: 'API_ERROR',
+        error_code: 'HTTP_ERROR',
         error: `${response.status} ${response.statusText}`
       });
     }
@@ -142,13 +143,37 @@ app.use((req, res, next) => {
 
 ## API Reference
 
-### Types
+### Schema and Types
+
+#### `TelemetryEventSchema`
+
+Zod schema for runtime validation and type inference:
+
+```typescript
+import { z } from 'zod';
+
+export const TelemetryEventSchema = z.object({
+  ts: z.number(),
+  level: z.enum(['info', 'warn', 'error']),
+  env: z.string(),
+  release: z.string(),
+  route: z.string().optional(),
+  status: z.number().optional(),
+  request_id: z.string().optional(),
+  error_code: z.string().optional(),
+  error: z.string().optional(),
+  details: z.record(z.unknown()).optional(),
+});
+```
 
 #### `TelemetryEvent`
 
-The core telemetry event interface:
+TypeScript type inferred from the schema:
 
 ```typescript
+export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;
+
+// Equivalent to:
 interface TelemetryEvent {
   ts: number;                           // Unix timestamp in milliseconds
   level: 'info' | 'warn' | 'error';    // Event severity level
@@ -218,6 +243,60 @@ emitEvent({
   error_code: 'VALIDATION_FAILED',
   error: 'Invalid user input',
   details: { field: 'email', value: 'invalid-email' }
+});
+```
+
+#### `scrub(value: unknown): unknown`
+
+Scrubs sensitive data from values for safe logging. Handles nested objects, arrays, and circular references.
+
+**Features:**
+- **Email redaction**: `user@example.com` → `***@example.com`
+- **Token-like redaction**: Long hex/base64 strings → `[REDACTED]`
+- **Sensitive key redaction**: Keys containing `password`, `secret`, `token`, `auth`, `key` → `[REDACTED]`
+- **String truncation**: Strings >500 chars → truncated with `...`
+- **Circular reference protection**: Circular refs → `[CIRCULAR]`
+- **Depth limiting**: Prevents infinite recursion → `[MAX_DEPTH]`
+
+**Parameters:**
+- `value` - Any value to scrub (objects, arrays, primitives)
+
+**Returns:**
+- Scrubbed copy of the input value
+
+**Examples:**
+```typescript
+// Email redaction
+scrub('Contact support@company.com') // → 'Contact ***@company.com'
+
+// Sensitive key redaction  
+scrub({ username: 'john', password: 'secret123' })
+// → { username: 'john', password: '[REDACTED]' }
+
+// Token redaction
+scrub('Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...')
+// → '[REDACTED]'
+
+// Complex object scrubbing
+const userData = {
+  profile: { email: 'user@company.com', apiKey: 'sk-abc123...' },
+  logs: ['Error for admin@company.com', 'Success']
+};
+
+scrub(userData)
+// → {
+//     profile: { email: '***@company.com', apiKey: '[REDACTED]' },
+//     logs: ['Error for ***@company.com', 'Success']
+//   }
+
+// Use with telemetry
+emitEvent({
+  ts: Date.now(),
+  level: 'error',
+  env: 'production', 
+  release: 'v1.2.3',
+  error: 'Validation failed',
+  details: scrub(sensitiveUserInput) // Safely scrub before logging
 });
 ```
 
@@ -309,6 +388,12 @@ pnpm build
 
 # Watch mode for development
 pnpm dev
+
+# Run tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test:watch
 ```
 
 ### Package Structure
@@ -316,12 +401,14 @@ pnpm dev
 ```
 packages/telemetry/
 ├── src/
-│   └── index.ts          # Main implementation
+│   ├── index.ts          # Main implementation
+│   └── scrub.test.ts     # Vitest test suite
 ├── dist/                 # Built output (generated)
 │   ├── index.js          # Compiled JavaScript
 │   └── index.d.ts        # Type definitions
 ├── package.json          # Package configuration
 ├── tsconfig.json         # TypeScript configuration
+├── vitest.config.ts      # Vitest configuration
 └── README.md            # This file
 ```
 
@@ -396,11 +483,26 @@ app.post('/telemetry', (req, res) => {
 
 ### Testing
 
-The telemetry package is designed to be easily testable:
+The telemetry package includes comprehensive tests using Vitest:
 
 ```typescript
-// Mock console.log to capture telemetry events in tests
-const mockLog = jest.spyOn(console, 'log').mockImplementation();
+// Built-in scrub function tests
+import { describe, it, expect } from 'vitest';
+import { scrub } from 'telemetry';
+
+describe('scrub', () => {
+  it('should redact email addresses', () => {
+    expect(scrub('user@example.com')).toBe('***@example.com');
+  });
+  
+  it('should redact sensitive keys', () => {
+    const result = scrub({ password: 'secret', name: 'john' });
+    expect(result).toEqual({ password: '[REDACTED]', name: 'john' });
+  });
+});
+
+// Testing telemetry emission
+const mockLog = vi.spyOn(console, 'log').mockImplementation();
 
 initTelemetry({
   env: 'test',

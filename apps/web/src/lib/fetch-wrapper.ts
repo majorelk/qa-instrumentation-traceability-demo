@@ -12,6 +12,35 @@ function generateUUID(): string {
   });
 }
 
+// Send telemetry event for non-OK responses
+function sendTelemetryEvent(event: TelemetryEvent): void {
+  try {
+    const telemetryPayload = JSON.stringify(event);
+    const telemetryUrl = '/telemetry';
+    
+    // Prefer navigator.sendBeacon for reliability
+    if (navigator.sendBeacon) {
+      const blob = new Blob([telemetryPayload], { type: 'application/json' });
+      navigator.sendBeacon(telemetryUrl, blob);
+      return;
+    }
+    
+    // Fallback to fetch POST (non-blocking)
+    fetch(telemetryUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-request-id': event.request_id || '',
+      },
+      body: telemetryPayload,
+    }).catch(() => {
+      // Ignore telemetry failures - non-blocking
+    });
+  } catch {
+    // Ignore telemetry failures - non-blocking
+  }
+}
+
 export async function fetchWithCorrelation(url: string, options: RequestInit = {}): Promise<Response> {
   const requestId = generateUUID();
   
@@ -21,41 +50,52 @@ export async function fetchWithCorrelation(url: string, options: RequestInit = {
   const headers = new Headers(options.headers);
   headers.set('x-request-id', requestId);
   
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-  
-  if (!response.ok) {
-    // Extract route from URL (remove base URL and query params)
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+    
+    // Send telemetry on non-OK responses
+    if (!response.ok) {
+      // Extract route from URL (remove base URL and query params)
+      const route = new URL(url, window.location.origin).pathname;
+      
+      const telemetryEvent: TelemetryEvent = {
+        ts: Date.now(),
+        level: response.status >= 500 ? 'error' : 'warn',
+        env: 'development', // Could be dynamic: import.meta.env.MODE
+        release: 'local',   // Could be dynamic: import.meta.env.VITE_APP_VERSION
+        route,
+        status: response.status,
+        request_id: requestId,
+        error_code: 'HTTP_ERROR',
+        error: `${response.status} ${response.statusText}`,
+      };
+      
+      // Send telemetry (non-blocking)
+      sendTelemetryEvent(telemetryEvent);
+    }
+    
+    return response;
+  } catch (error) {
+    // Send telemetry for network errors
     const route = new URL(url, window.location.origin).pathname;
     
     const telemetryEvent: TelemetryEvent = {
       ts: Date.now(),
       level: 'error',
-      env: 'development',
-      release: 'local',
+      env: 'development', // Could be dynamic: import.meta.env.MODE  
+      release: 'local',   // Could be dynamic: import.meta.env.VITE_APP_VERSION
       route,
-      status: response.status,
       request_id: requestId,
-      error_code: 'API_ERROR',
-      error: `${response.status} ${response.statusText}`,
+      error_code: 'NETWORK_ERROR',
+      error: error instanceof Error ? error.message : 'Unknown network error',
     };
     
-    // Send telemetry event
-    try {
-      await fetch('/telemetry', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-request-id': generateUUID(), // New request ID for telemetry call
-        },
-        body: JSON.stringify(telemetryEvent),
-      });
-    } catch (telemetryError) {
-      console.warn('Failed to send telemetry event:', telemetryError);
-    }
+    // Send telemetry (non-blocking)
+    sendTelemetryEvent(telemetryEvent);
+    
+    throw error;
   }
-  
-  return response;
 }

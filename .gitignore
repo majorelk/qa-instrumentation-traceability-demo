@@ -5,3 +5,4 @@ dist
 .DS_Store
 tests/e2e/playwright-report
 infra/.env
+logs/

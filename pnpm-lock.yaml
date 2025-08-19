@@ -75,10 +75,20 @@ importers:
         version: 3.25.76
 
   packages/telemetry:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
       typescript:
         specifier: ^5.9.2
         version: 5.9.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@24.3.0)(tsx@4.20.4)
 
   tests/e2e:
     devDependencies:

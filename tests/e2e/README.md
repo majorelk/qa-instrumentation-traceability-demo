@@ -62,7 +62,7 @@ Located in `playwright.config.ts`:
 ```typescript
 export default defineConfig({
   testDir: 'tests',                    // Test files location
-  fullyParallel: true,                 // Run tests in parallel
+  fullyParallel: true,                 // Run tests in parallel (overridden by serial config)
   forbidOnly: !!process.env.CI,       // Prevent .only() in CI
   retries: process.env.CI ? 2 : 0,     // Retry failed tests in CI
   workers: process.env.CI ? 1 : undefined, // Single worker in CI
@@ -91,22 +91,31 @@ export default defineConfig({
 });
 ```
 
+**Note:** Tests in `traceability.spec.ts` are configured to run serially (`test.describe.configure({ mode: 'serial' })`) to avoid conflicts with the shared debug endpoints.
+
 ## Test Scenarios
 
-### Primary Test: Request Traceability
+### Test 1: End-to-End Request Traceability
 
 **File:** `tests/traceability.spec.ts`
 
-**Objective:** Verify end-to-end request correlation from UI action to telemetry logging
+**Objective:** Verify complete request correlation from UI action to telemetry logging
 
 **Test Flow:**
 1. **Navigate** to the web application
-2. **Verify** page loads correctly
-3. **Click** "Trigger API Error" button
+2. **Verify** page loads correctly  
+3. **Click** "Trigger API Error" button (real user interaction)
 4. **Wait** for network requests to complete
 5. **Extract** request ID from `window.__lastReqId`
 6. **Fetch** last telemetry event from debug endpoint
 7. **Assert** request IDs match between UI and telemetry
+
+**What This Tests:**
+- Real UI interaction triggers telemetry
+- Request correlation flows end-to-end
+- Web app's fetch wrapper works correctly
+- Navigator.sendBeacon/fetch fallback behavior
+- API properly stores telemetry events
 
 **Code Example:**
 ```typescript
@@ -115,7 +124,7 @@ test('end-to-end request traceability with telemetry correlation', async ({ page
   await page.goto('/');
   await expect(page.locator('h1')).toContainText('QA Instrumentation Demo');
   
-  // Trigger API error
+  // Trigger API error via real UI interaction
   const button = page.locator('button:has-text("Trigger API Error")');
   await button.click();
   await page.waitForTimeout(1000);
@@ -131,13 +140,92 @@ test('end-to-end request traceability with telemetry correlation', async ({ page
   const lastEvent = await response.json();
   expect(lastEvent).toMatchObject({
     level: 'error',
-    env: 'development',
+    env: 'development', 
     release: 'local',
     route: '/api/fail',
     status: 500,
-    error_code: 'API_ERROR',
+    error_code: 'HTTP_ERROR',
     request_id: requestId,
   });
+});
+```
+
+### Test 2: API Security and Data Scrubbing Contract
+
+**File:** `tests/traceability.spec.ts`
+
+**Objective:** Validate API's telemetry scrubbing and security contract compliance
+
+**Test Flow:**
+1. **Navigate** to establish context
+2. **Send** telemetry event with realistic sensitive data to API
+3. **Verify** API accepts and processes the event (204 response)
+4. **Fetch** processed event from `/debug/telemetry/last`
+5. **Assert** sensitive data was properly scrubbed
+6. **Assert** normal data was preserved unchanged
+7. **Verify** no raw sensitive data appears anywhere in response
+
+**What This Tests:**
+- API properly scrubs sensitive data in telemetry details
+- Email addresses are redacted (***@domain format)
+- Sensitive keys (password, apiKey, authToken) are redacted
+- String truncation prevents log explosion
+- Normal data is preserved (no over-scrubbing)
+- Request correlation works for direct API calls
+- API security contract is maintained
+
+**Code Example:**
+```typescript
+test('API telemetry scrubbing and validation contract', async ({ page }) => {
+  await page.goto('/');
+  
+  const testRequestId = 'scrub-contract-' + Date.now();
+  
+  // Send realistic sensitive data that could appear in error details
+  const telemetryResponse = await page.request.post('http://localhost:3000/telemetry', {
+    headers: { 'Content-Type': 'application/json', 'x-request-id': testRequestId },
+    data: {
+      ts: Date.now(),
+      level: 'error',
+      env: 'development',
+      release: 'local',
+      route: '/api/sensitive-operation',
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      details: {
+        userEmail: 'user@company.com',          // Email in error context
+        apiKey: 'sk-1234567890abcdef1234',      // Accidentally logged API key
+        password: 'leaked-password',             // Password in form data
+        normalField: 'safe-to-log',             // Non-sensitive data
+        longTrace: 'x'.repeat(600)              // Long stack trace
+      }
+    }
+  });
+  
+  expect(telemetryResponse.status()).toBe(204);
+  
+  // Verify scrubbing worked
+  const debugResponse = await page.request.get('http://localhost:3000/debug/telemetry/last');
+  const scrubbedEvent = await debugResponse.json();
+  
+  // Assert correlation
+  expect(scrubbedEvent.request_id).toBe(testRequestId);
+  
+  // Assert sensitive data scrubbed
+  expect(scrubbedEvent.details.userEmail).toBe('***@company.com');
+  expect(scrubbedEvent.details.apiKey).toBe('[REDACTED]');
+  expect(scrubbedEvent.details.password).toBe('[REDACTED]');
+  
+  // Assert normal data preserved
+  expect(scrubbedEvent.details.normalField).toBe('safe-to-log');
+  
+  // Assert string truncation
+  expect(scrubbedEvent.details.longTrace).toHaveLength(500);
+  
+  // Assert no leakage - negative testing
+  const eventString = JSON.stringify(scrubbedEvent);
+  expect(eventString).not.toContain('user@company.com');
+  expect(eventString).not.toContain('leaked-password');
 });
 ```
 
