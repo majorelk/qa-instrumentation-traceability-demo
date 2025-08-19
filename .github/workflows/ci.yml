@@ -62,8 +62,8 @@ jobs:
       - name: Wait for API to be ready
         run: npx --yes wait-on http://localhost:3000/healthz --timeout 30000
 
-      - name: Run E2E tests (production mode)
-        run: pnpm -C tests/e2e test
+      - name: Run E2E tests (production mode, excluding failure-demo)
+        run: pnpm -C tests/e2e exec playwright test --grep-invert "failure-demo"
         env:
           CI: true
 
@@ -82,3 +82,64 @@ jobs:
           name: test-artifacts
           path: tests/e2e/test-results/
           retention-days: 30
+
+  e2e-failure-demo:
+    name: E2E Failure Demo (Intentional)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-test
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm -r build
+
+      - name: Install Playwright browsers
+        run: pnpm -C tests/e2e exec playwright install --with-deps
+
+      - name: Start API server
+        run: pnpm -C apps/api dev &
+        
+      - name: Wait for API to be ready
+        run: npx --yes wait-on http://localhost:3000/healthz --timeout 30000
+
+      - name: Run failure demo test (dev mode)
+        run: pnpm -C tests/e2e exec playwright test --grep "failure-demo"
+        env:
+          CI: true
+          USE_DEV_SERVER: 1
+
+      - name: Upload Playwright report (failure demo)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-failure-demo
+          path: tests/e2e/playwright-report/
+          retention-days: 30
+
+      - name: Write Job Summary
+        if: always()
+        run: |
+          echo "## 🎭 Failure Demo Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This job intentionally runs a failing test to demonstrate artifact collection." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Playwright Report**: \`playwright-report-failure-demo\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Screenshots**: Captured at failure point" >> $GITHUB_STEP_SUMMARY
+          echo "- **Videos**: Full test execution recording" >> $GITHUB_STEP_SUMMARY
+          echo "- **Traces**: Detailed timeline with network/DOM events" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "💡 Download the artifacts to explore Playwright's debugging capabilities." >> $GITHUB_STEP_SUMMARY
