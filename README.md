@@ -7,7 +7,7 @@ A minimal monorepo demonstrating **application-layer instrumentation** for **bug
 ## What this demonstrates
 
 - **Request correlation** with `x-request-id` from Web → API
-- **Structured telemetry** with consistent error/event schema
+- **Structured telemetry** with Zod schema validation and data scrubbing
 - **Deterministic E2E artifacts** (trace, screenshots, video) on failure
 - **End-to-end traceability** proving request correlation works
 - **CI-friendly** layout for GitHub Actions
@@ -19,7 +19,7 @@ apps/
   api/        # Express 4.x API (correlation middleware, telemetry sink, debug endpoints)
   web/        # Vite 7 + React 18 app (fetch wrapper, telemetry emission)
 packages/
-  telemetry/  # TypeScript utilities for structured event emission
+  telemetry/  # TypeScript utilities with Zod schema validation and data scrubbing
 tests/
   e2e/        # Playwright tests with trace/screenshot/video artifacts
 external-mocks/
@@ -99,7 +99,13 @@ Every request gets a unique `x-request-id` that flows through:
 
 ### Telemetry Schema
 
+The telemetry package provides **Zod schema validation** and **data scrubbing** for safe logging:
+
 ```typescript
+// Zod schema for runtime validation
+import { TelemetryEventSchema, scrub, type TelemetryEvent } from 'telemetry';
+
+// Type-safe event structure
 interface TelemetryEvent {
   ts: number;                    // Timestamp
   level: 'info' | 'warn' | 'error';
@@ -112,6 +118,9 @@ interface TelemetryEvent {
   error?: string;                // Error message/stack
   details?: Record<string, unknown>; // Additional context
 }
+
+// Safe data scrubbing - removes emails, tokens, passwords
+const scrubbedData = scrub(sensitiveUserInput);
 ```
 
 ### Vite Proxy Configuration
@@ -159,6 +168,9 @@ Test artifacts on failure:
 ```bash
 # Unit tests (API)
 pnpm -C apps/api test
+
+# Unit tests (telemetry package)
+pnpm -C packages/telemetry test
 
 # E2E tests (fast dev mode)
 USE_DEV_SERVER=1 pnpm -C tests/e2e test
