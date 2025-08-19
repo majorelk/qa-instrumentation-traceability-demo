@@ -258,6 +258,28 @@ pnpm -r build
 - Verify Vite proxy configuration is working
 - Ensure Playwright browsers are installed: `pnpm -C tests/e2e exec playwright install --with-deps`
 
+## Failure Demo
+
+To demonstrate Playwright's artifact collection capabilities, we include an intentional failure test:
+
+### Local Testing
+```bash
+# Run the failure demo locally
+pnpm -C tests/e2e exec playwright test --grep "failure-demo"
+
+# View generated artifacts
+pnpm -C tests/e2e report
+```
+
+### CI Artifacts
+The CI includes a dedicated `e2e-failure-demo` job that:
+- Always runs (with `continue-on-error: true`)
+- Generates trace, screenshot, and video artifacts
+- Uploads artifacts as `playwright-report-failure-demo`
+- Creates a job summary linking to the artifacts
+
+This demonstrates how test failures in CI produce actionable debugging materials that can be downloaded and analyzed.
+
 ## Contributing
 
 When making changes:
