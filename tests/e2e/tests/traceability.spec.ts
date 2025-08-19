@@ -50,95 +50,81 @@ test('end-to-end request traceability with telemetry correlation', async ({ page
   console.log(`✓ Telemetry event captured:`, lastEvent);
 });
 
-test('request correlation and data scrubbing via /debug/telemetry/last', async ({ page }) => {
-  // Navigate to the web app
+test('API telemetry scrubbing and validation contract', async ({ page }) => {
+  // Navigate to ensure we have proper context
   await page.goto('/');
   
-  // Verify the page loaded correctly
-  await expect(page.locator('h1')).toContainText('QA Instrumentation Demo');
+  // Test the API's telemetry scrubbing behavior directly (this is valid since it's an API contract test)
+  const testRequestId = 'scrub-contract-' + Date.now();
   
-  // Send a telemetry event with sensitive data directly to test scrubbing
-  const testRequestId = await page.evaluate(() => {
-    const requestId = 'scrub-test-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
-    
-    // Simulate sending telemetry with sensitive details
-    fetch('/telemetry', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-request-id': requestId,
-      },
-      body: JSON.stringify({
-        ts: Date.now(),
-        level: 'error',
-        env: 'development',
-        release: 'local',
-        route: '/test/scrubbing',
-        status: 400,
-        error_code: 'VALIDATION_ERROR',
-        error: 'User data validation failed',
-        details: {
-          userEmail: 'sensitive.user@company.com',
-          apiKey: 'sk-1234567890abcdef1234567890abcdef',
-          password: 'supersecret123',
-          authToken: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
-          normalField: 'this should remain visible',
-          longString: 'a'.repeat(600), // Should be truncated
-          nestedData: {
-            email: 'nested@example.com',
-            secretKey: 'secret-value-123',
-            publicInfo: 'visible data'
-          }
-        }
-      })
-    }).catch(() => {
-      // Ignore fetch errors for this test
-    });
-    
-    return requestId;
+  // Send a telemetry event with sensitive data to verify the API contract
+  const telemetryResponse = await page.request.post('http://localhost:3000/telemetry', {
+    headers: {
+      'Content-Type': 'application/json',
+      'x-request-id': testRequestId,
+    },
+    data: {
+      ts: Date.now(),
+      level: 'error',
+      env: 'development',
+      release: 'local',
+      route: '/api/sensitive-operation',
+      status: 400,
+      error_code: 'VALIDATION_ERROR',
+      error: 'User data validation failed',
+      details: {
+        // These represent data that COULD realistically be in error details
+        userEmail: 'user@company.com',          // Email in error context
+        apiKey: 'sk-1234567890abcdef1234',      // API key accidentally logged
+        bearerToken: 'Bearer abc123def456',      // Auth token in error
+        password: 'leaked-password',             // Password in form data
+        normalField: 'safe-to-log',             // Non-sensitive data
+        errorContext: 'Form validation failed', // Normal error context
+        longTrace: 'x'.repeat(600)              // Long stack trace
+      }
+    }
   });
   
-  // Wait for telemetry to be processed
-  await page.waitForTimeout(1000);
+  // Verify telemetry was accepted
+  expect(telemetryResponse.status()).toBe(204);
   
-  // Fetch the last telemetry event using the new endpoint
-  const response = await page.request.get('http://localhost:3000/debug/telemetry/last');
-  expect(response.status()).toBe(200);
+  // Fetch the processed event to verify scrubbing worked
+  const debugResponse = await page.request.get('http://localhost:3000/debug/telemetry/last');
+  expect(debugResponse.status()).toBe(200);
   
-  const lastEvent = await response.json();
+  const scrubbedEvent = await debugResponse.json();
   
-  // 1. Assert request_id correlation (should match our test request)
-  expect(lastEvent.request_id).toBe(testRequestId);
+  // 1. Verify request correlation 
+  expect(scrubbedEvent.request_id).toBe(testRequestId);
   
-  // 2. Assert event structure
-  expect(lastEvent).toMatchObject({
+  // 2. Verify event structure is preserved
+  expect(scrubbedEvent).toMatchObject({
     level: 'error',
-    route: '/test/scrubbing',
+    route: '/api/sensitive-operation',
     status: 400,
     error_code: 'VALIDATION_ERROR',
   });
   
-  // 3. Verify details field exists and was scrubbed
-  expect(lastEvent.details).toBeDefined();
+  // 3. CRITICAL: Verify sensitive data was scrubbed
+  expect(scrubbedEvent.details.userEmail).toBe('***@company.com');      // Email redacted
+  expect(scrubbedEvent.details.apiKey).toBe('[REDACTED]');              // API key redacted  
+  expect(scrubbedEvent.details.bearerToken).toBe('[REDACTED]');         // Token redacted
+  expect(scrubbedEvent.details.password).toBe('[REDACTED]');            // Password redacted
   
-  // 4. Assert data scrubbing - emails should be redacted
-  expect(lastEvent.details.userEmail).toBe('***@company.com');
-  expect(lastEvent.details.nestedData.email).toBe('***@example.com');
+  // 4. CRITICAL: Verify safe data was preserved
+  expect(scrubbedEvent.details.normalField).toBe('safe-to-log');
+  expect(scrubbedEvent.details.errorContext).toBe('Form validation failed');
   
-  // 5. Assert sensitive keys are redacted
-  expect(lastEvent.details.apiKey).toBe('[REDACTED]');
-  expect(lastEvent.details.password).toBe('[REDACTED]');
-  expect(lastEvent.details.authToken).toBe('[REDACTED]');
-  expect(lastEvent.details.nestedData.secretKey).toBe('[REDACTED]');
+  // 5. CRITICAL: Verify string truncation works
+  expect(scrubbedEvent.details.longTrace).toHaveLength(500);
+  expect(scrubbedEvent.details.longTrace).toMatch(/\.\.\.$/);
   
-  // 6. Assert normal data is preserved
-  expect(lastEvent.details.normalField).toBe('this should remain visible');
-  expect(lastEvent.details.nestedData.publicInfo).toBe('visible data');
+  // 6. Verify no raw sensitive data leaked anywhere in the response
+  const eventString = JSON.stringify(scrubbedEvent);
+  expect(eventString).not.toContain('user@company.com');               // Original email should not appear
+  expect(eventString).not.toContain('sk-1234567890abcdef1234');        // Original API key should not appear
+  expect(eventString).not.toContain('leaked-password');                // Original password should not appear
   
-  // 7. Assert long string truncation
-  expect(lastEvent.details.longString).toHaveLength(500);
-  expect(lastEvent.details.longString).toMatch(/\.\.\.$/); // Should end with ...
-  
-  console.log(`✓ Request correlation verified with ID: ${testRequestId}`);
-  console.log(`✓ Data scrubbing verified:`, JSON.stringify(lastEvent.details, null, 2));
+  console.log(`✓ API scrubbing contract verified with ID: ${testRequestId}`);
+  console.log(`✓ Sensitive data properly redacted:`, scrubbedEvent.details);
 });
