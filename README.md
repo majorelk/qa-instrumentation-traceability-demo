@@ -143,12 +143,19 @@ This works in both dev and preview modes, eliminating CORS issues.
 
 ### Playwright Testing
 
-E2E tests demonstrate complete request traceability:
+E2E tests provide comprehensive validation with two focused test scenarios:
 
+**Test 1: End-to-End Request Correlation**
 1. **Trigger error** by clicking "Trigger API Error" button
 2. **Capture request ID** from `window.__lastReqId`
 3. **Verify telemetry** via `/debug/last-event` endpoint
 4. **Assert correlation** between UI request and logged telemetry
+
+**Test 2: API Security and Data Scrubbing**
+1. **Send realistic sensitive data** to telemetry API
+2. **Verify data scrubbing** - emails redacted, tokens removed
+3. **Assert normal data preserved** - no over-scrubbing
+4. **Validate security contract** - no sensitive data leakage
 
 Test artifacts on failure:
 - **Screenshots** of the failing state
